@@ -257,9 +257,10 @@ if corr_value==0
 elseif corr_value==1
     %now I correct using the scan
     handles.response_xory=response_xory;
-    [response_xory,freq]=correct_response_scan(handles)
+    [response_xory,freq]=correct_response_scan(handles);
     
 elseif corr_value==2
+    [response_xory,freq]=correct_response_hf(handles);
     %now I correct using the high frequency
 else
       throw('unknown correction')
@@ -544,13 +545,14 @@ act_data_a=get(handles.listbox_active,'Value');
 load_active=[handles.dir,filesep,folders(handles.current_folder).name,filesep,folders_a(act_data_a).name];
 
 load([load_active,filesep,'scan.mat']);
-
+files=dir([load_active,filesep,'*deformation_response.mat']);
+load([load_active,filesep,files(1).name]);
 %now I check if we are intrestedin x or y
 if handles.response_function_dirrection == 'X'
-    scan_xory(1,:) =x_scan(1,:)/cal(5);
+    scan_xory(1,:) =x_scan(1,:); %for some reason here the first row is already in µm
     scan_xory(2,:) =x_scan(4,:)./x_scan(8,:);
 elseif handles.response_function_dirrection == 'Y'
-    scan_xory(1,:) =y_scan(2,:)/cal(6);
+    scan_xory(1,:) =y_scan(2,:);
     scan_xory(2,:) =y_scan(6,:)./y_scan(8,:);
 else
     throw('unknown direction')
@@ -565,8 +567,8 @@ scan=scan_xory(:,min([mins,maxs]):max([mins,maxs]));
 %now I have to load each frequency data and realanyze the data
 files=dir([load_active,filesep,'*deformation_response.mat']);
 for j=1:length(files)
-    load([path,filesep,files(j).name]);
-    
+    load([load_active,filesep,files(j).name]);
+    data=squeeze(data);
     xy_k=-xy_k;
     
     if handles.response_function_dirrection == 'X'
@@ -593,3 +595,58 @@ for j=1:length(files)
     response_xory(j)=alpha_x(b);
     freq(j)=f;
 end
+
+
+
+% ------------- additional Function-------------
+function [response_xory,freq]=correct_response_hf(handles)
+%first I need to load the scan data
+folders=handles.folders;
+folders_a=handles.folders_a;
+act_data_a=get(handles.listbox_active,'Value');
+load_active=[handles.dir,filesep,folders(handles.current_folder).name,filesep,folders_a(act_data_a).name];
+
+
+%fist I load the hf dataset, then I calculate the prefactor to make the
+%effective movement minimal
+files=dir([load_active,filesep,'*deformation_response.mat']);
+    load([load_active,filesep,files(1).name]);
+    data=squeeze(data);
+    x_rel=1./(xy_slope(1).*1e6).*data(4,:)./data(8,:);
+    x_trap=-data(1,:)/cal(5)*1e-6;
+    %x_rel=x_rel-mean(x_rel);
+    %x_trap=x_trap-mean(x_trap);
+    n=0;
+    for j=0.05:0.05:3
+        n=n+1;
+        pf_int(n)=var((1/j*x_rel(1:50)+x_trap(1:50)));
+    end
+    
+    [v,pf]=min(pf_int);
+    pf=0.05*pf
+    
+
+for j=1:length(files)
+    load([load_active,filesep,files(j).name]);
+    data=squeeze(data);
+    
+    [alpha_x,alpha_y, fr]=get_response_AOD(squeeze(data),f,pf*xy_slope,xy_k,cal,s_eff);
+    
+    if handles.response_function_dirrection == 'X'
+        alpha_xory=alpha_x;
+    elseif handles.response_function_dirrection == 'Y'
+        alpha_xory=alpha_y;
+    end    
+
+    p=length(data);
+
+    
+    %now pick the right value
+    [a,b]=min(abs(f-fr));
+    response_xory(j)=alpha_x(b);
+    freq(j)=f;
+end
+
+
+
+

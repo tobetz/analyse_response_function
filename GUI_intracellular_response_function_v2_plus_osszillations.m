@@ -276,7 +276,7 @@ ylabel('G in Pa (o dissipative, + elastic)')
 
 
 
-freq=get(handles.slider_freq,'Value');
+freq=length(G)-round(get(handles.slider_freq,'Value'))+1;
 %now I load the frequency selected
 %load the active response
 folders=handles.folders;
@@ -295,8 +295,19 @@ axes(handles.oss);
 %first I plot the normaized force and position
 xy_k=-xy_k;
 x=-data(1,:)/cal(5)*1e-6+1./(xy_slope(1).*1e6).*data(4,:)./data(8,:);
-
 Fx=xy_k(1)./(xy_slope(1)*1e6).*data(4,:)./data(8,:);
+
+%lets fit a sine to the force
+temp=[0:length(x)-1]/s_eff;
+f_sin_f=fittype('a*sin(2*pi*f*t+phase)','independent','t','problem','f')
+[ff,goff]=fit(temp',Fx'-mean(Fx),f_sin_f,'problem',f)
+phase=ff.phase
+
+
+f_sin_p=fittype('a*sin(2*pi*f*t+phase)+b*cos(2*pi*f*t+phase)','independent','t','problem',{'f','phase'});
+[fp,gofp]=fit(temp',x'-mean(x),f_sin_p,'problem',{f,phase})
+clear i;
+response_recal=fp.a/ff.a+i*(fp.b/ff.a)
 
 %I now calculate the length of the first 8 periods
 l_l=8*s_eff/f;
@@ -323,7 +334,7 @@ hold on
 loglog(fr,imag(FX),'b-o')
 loglog(fr,real(FF),'g-+')
 loglog(fr,imag(FF),'g-o')
-xlim([1 10000]);
+xlim([min(fr) max(fr)]);
 ylim([1e-12 1e-2])
 hold off
 
