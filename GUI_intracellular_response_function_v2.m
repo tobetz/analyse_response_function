@@ -22,7 +22,7 @@ function varargout = GUI_intracellular_response_function_v2(varargin)
 
 % Edit the above text to modify the axes_response to help GUI_intracellular_response_function_v2
 
-% Last Modified by GUIDE v2.5 23-Oct-2013 10:50:20
+% Last Modified by GUIDE v2.5 04-Dec-2013 00:33:33
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -232,6 +232,8 @@ handles=display_current_data(handles);
 function handles=display_current_data(handles)
 %This function displays the data in the current folder
 
+
+
 handles.particle_diameter=str2num(get(handles.edit_particle_diameter,'String'))*1e-6;
 handles.response_prefactor=str2num(get(handles.edit_response_prefactor,'String'));
 
@@ -246,6 +248,25 @@ elseif handles.response_function_dirrection == 'Y'
 else
     throw('unknown direction')
 end
+
+%Now I check if there is a correction to be applied
+corr_value=get(handles.listbox_correction,'Value')-1;
+%if correction required, directly apply it on the xory response
+if corr_value==0
+    
+elseif corr_value==1
+    %now I correct using the scan
+    handles.response_xory=response_xory;
+    [response_xory,freq]=correct_response_scan(handles)
+    
+elseif corr_value==2
+    %now I correct using the high frequency
+else
+      throw('unknown correction')
+end
+
+
+
 psd_x=handles.psd_x(handles.act_trap,:);
 
 axes(handles.axes_response)
@@ -475,3 +496,100 @@ function XorY_SelectionChangeFcn(hObject, eventdata, handles)
         throw('got unknown radio button !') 
     end
     guidata(hObject, handles);
+
+
+% --- Executes on button press in pushbutton_scan.
+function pushbutton_scan_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton_scan (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+% --- Executes on button press in pushbutton_hf.
+function pushbutton_hf_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton_hf (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+% --- Executes on selection change in listbox_correction.
+function listbox_correction_Callback(hObject, eventdata, handles)
+% hObject    handle to listbox_correction (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: contents = cellstr(get(hObject,'String')) returns listbox_correction contents as cell array
+%        contents{get(hObject,'Value')} returns selected item from listbox_correction
+
+
+% --- Executes during object creation, after setting all properties.
+function listbox_correction_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to listbox_correction (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: listbox controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% ------------- additional Function-------------
+function [response_xory,freq]=correct_response_scan(handles)
+%first I need to load the scan data
+folders=handles.folders;
+folders_a=handles.folders_a;
+act_data_a=get(handles.listbox_active,'Value');
+load_active=[handles.dir,filesep,folders(handles.current_folder).name,filesep,folders_a(act_data_a).name];
+
+load([load_active,filesep,'scan.mat']);
+
+%now I check if we are intrestedin x or y
+if handles.response_function_dirrection == 'X'
+    scan_xory(1,:) =x_scan(1,:)/cal(5);
+    scan_xory(2,:) =x_scan(4,:)./x_scan(8,:);
+elseif handles.response_function_dirrection == 'Y'
+    scan_xory(1,:) =y_scan(2,:)/cal(6);
+    scan_xory(2,:) =y_scan(6,:)./y_scan(8,:);
+else
+    throw('unknown direction')
+end
+
+%now I cut the scan to only show the region between max and min
+[v,mins]=min(scan_xory(2,:));
+[v,maxs]=max(scan_xory(2,:));
+scan=scan_xory(:,min([mins,maxs]):max([mins,maxs]));
+
+%here scan isnot the array that I will use for the interpolation. 
+%now I have to load each frequency data and realanyze the data
+files=dir([load_active,filesep,'*deformation_response.mat']);
+for j=1:length(files)
+    load([path,filesep,files(j).name]);
+    
+    xy_k=-xy_k;
+    
+    if handles.response_function_dirrection == 'X'
+         bead_pos_rel=interp1(scan(2,:),scan(1,:),data(4,:)./data(8,:))
+         bead_pos_xory=-data(1,:)/cal(5)*1e-6+bead_pos_rel;
+        %    x=-data(1,:)/cal(5)*1e-6+1./(xy_slopes(1).*1e6).*data(4,:)./data(8,:);
+         Fxory=xy_k(1).bead_pos_rel;
+
+    elseif handles.response_function_dirrection == 'Y'
+         bead_pos_rel=interp1(scan(2,:),scan(1,:),data(6,:)./data(8,:))
+         bead_pos_xory=-data(2,:)/cal(6)*1e-6+bead_pos_rel;
+        %    x=-data(1,:)/cal(5)*1e-6+1./(xy_slopes(1).*1e6).*data(4,:)./data(8,:);
+         Fxory=xy_k(2).bead_pos_rel;
+    end    
+
+    p=length(x);
+
+    alpha_xory=fft(bead_pos_xory)./fft(Fxory);
+    alpha_xory=alpha_xory(1:p/2+1);
+    fr=rate/p*([0:p/2]);
+    
+    %now pick the right value
+    [a,b]=min(abs(f-fr));
+    response_xory(j)=alpha_x(b);
+    freq(j)=f;
+end
